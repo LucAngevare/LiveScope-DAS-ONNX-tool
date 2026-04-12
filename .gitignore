@@ -1,7 +1,9 @@
-das_savedmodel/
-das_savedmodel*
-.venv
-.venv/*
-__pycache__
 __pycache__/
 __pycache__/*
+das_savedmodel/
+das_savedmodel/*
+das_model.onnx
+20260220_211739_model.h5
+.venv
+.venv/
+.venv/*

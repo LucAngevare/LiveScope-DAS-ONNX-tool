@@ -52,8 +52,10 @@ numba==0.63.1
 numcodecs==0.15.1
 numexpr==2.14.1
 numpy==1.24.3
+nvidia-ml-py3==7.352.0
 oauthlib==3.3.1
 onnx==1.17.0
+onnxruntime-gpu==1.22.0
 opencv-python-headless==4.11.0.86
 opt_einsum==3.4.0
 packaging @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_packaging_1769093650/work
