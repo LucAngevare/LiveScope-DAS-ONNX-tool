@@ -60,25 +60,15 @@ custom_objects = {
     "Spectrogram": Spectrogram,
     "Melspectrogram": Melspectrogram,
     "Normalization2D": Normalization2D,
-<<<<<<< HEAD
-    # DAS sometimes stores this exact string in Lambda configs:
-=======
->>>>>>> 4fd1efb (Added a lot of new things)
     "das.tcn.tcn": das_tcn,
     "tcn": das_tcn,
 }
 
-<<<<<<< HEAD
-m = tf.keras.models.load_model("20251116_115659_model.h5", custom_objects=custom_objects, compile=False)
-
-# Build concrete graph once (important for SavedModel export)
-=======
 print("TensorFlow:", tf.__version__)
 print("tf_keras:", tf_keras.__version__, tf_keras.__file__)
 
-m = load_model("20260220_211739_model.h5", custom_objects=custom_objects, compile=False)
+m = load_model("20260301_155538_model.h5", custom_objects=custom_objects, compile=False)
 
->>>>>>> 4fd1efb (Added a lot of new things)
 inp = m.inputs[0]
 dummy = tf.zeros([1] + list(inp.shape[1:]), dtype=inp.dtype)
 _ = m(dummy, training=False)
@@ -86,12 +76,5 @@ _ = m(dummy, training=False)
 m.save("das_savedmodel", include_optimizer=False)
 print("SavedModel written to ./das_savedmodel")
 
-<<<<<<< HEAD
-# now that has been done, we need to run python -m tf2onnx.convert --saved-model das_savedmodel --opset 13 --output das_model.onnx
-# but because I don't like using bash and I want everything to run in a single script, I will use the module tf2onnx so I can continue to use python
-
-savedmodel_to_onnx("das_savedmodel", "das_model.onnx", opset=13)
-=======
 savedmodel_to_onnx("das_savedmodel", "das_model.onnx", opset=13)
 print("ONNX written to das_model.onnx")
->>>>>>> 4fd1efb (Added a lot of new things)

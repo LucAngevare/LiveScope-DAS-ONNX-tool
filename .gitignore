@@ -1,9 +1,7 @@
-__pycache__/
-__pycache__/*
-das_savedmodel/
-das_savedmodel/*
-das_model.onnx
-20260220_211739_model.h5
 .venv
 .venv/
 .venv/*
+.trt_smoke_cache/*
+.trt_cache/*
+.trt_smoke_cache/
+.trt_cache/

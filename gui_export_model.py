@@ -1,11 +1,9 @@
 import os
-# Do not force-disable GPU: TensorRT/CUDA acceleration needs visible GPU devices.
-# Set FORCE_CPU=1 in the environment if CPU-only behavior is required.
 if os.environ.get("FORCE_CPU", "0") == "1":
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 
-# Workaround for protobuf incompatibility (slower, but avoids crash), protobuf needs to be a lower version for this version of tensorflow to work but bad practice, so using slower pure python version
+#Workaround for protobuf incompatibility, protobuf needs to be a lower version for this version of tensorflow to work but bad practice, so using slower pure python version
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION_VERSION"] = "2"
 
@@ -30,9 +28,15 @@ from das.kapre.time_frequency import Spectrogram, Melspectrogram
 from das.kapre.utils import Normalization2D
 from das.tcn import tcn as das_tcn
 
-# ONNX Runtime for predictions
+#ONNX Runtime for predictions
 try:
     import onnxruntime as ort
+    try:
+        #load CUDA/cuDNN DLLs from NVIDIA site-packages where available.
+        if hasattr(ort, "preload_dlls"):
+            ort.preload_dlls(directory="")
+    except Exception:
+        pass
     HAS_ONNX_RUNTIME = True
 except ImportError:
     HAS_ONNX_RUNTIME = False
@@ -44,7 +48,7 @@ if HAS_ONNX_RUNTIME:
     except Exception:
         HAS_TENSORRT_EP = False
 
-# Audio file reading
+#audio file reading
 try:
     import soundfile as sf
     HAS_SOUNDFILE = True
@@ -56,7 +60,7 @@ except ImportError:
     except ImportError:
         HAS_SCIPY = False
 
-# GPU monitoring
+#GPU monitoring
 try:
     import pynvml
     pynvml.nvmlInit()
@@ -64,7 +68,6 @@ try:
 except:
     HAS_GPU_MONITOR = False
 
-# ---- Patch tf_keras Lambda/function loading (marshal-safe) ----
 _real_func_load = tfk_generic_utils.func_load
 
 def _resolve_dotted(name: str):
@@ -86,7 +89,6 @@ def safe_func_load(code, defaults=None, closure=None, globs=None):
         return (lambda x, **kw: x)
 
 tfk_generic_utils.func_load = safe_func_load
-# ---- End patch ----
 
 custom_objects = {
     "Spectrogram": Spectrogram,
@@ -97,7 +99,7 @@ custom_objects = {
 }
 
 def savedmodel_to_onnx(saved_model_dir: str, onnx_path: str, opset: int = 13):
-    import tf2onnx.convert  # <-- FORCE import for PyInstaller
+    import tf2onnx.convert  # this import was done to force the import to PyInstaller
 
     old_argv = sys.argv[:]
     try:
@@ -121,20 +123,24 @@ def export_model(h5_path: str, output_dir: str, progress_callback, opset: int = 
         onnx_path = output_dir / "das_model.onnx"
 
         progress_callback("Loading model...", 20)
+        #For aesthetic reasons: We need a progress bar, of course. the first 20% is just to load the model
         m = load_model(str(h5_path), custom_objects=custom_objects, compile=False)
         progress_callback("Model loaded successfully", 40)
 
         progress_callback("Running dummy inference...", 50)
+        #Then running the inference from 50-60%
         inp = m.inputs[0]
         dummy = tf.zeros([1] + list(inp.shape[1:]), dtype=inp.dtype)
         _ = m(dummy, training=False)
         progress_callback("Dummy inference completed", 60)
 
         progress_callback("Saving as SavedModel...", 70)
+        #Saving that 70-80
         m.save(str(savedmodel_path), include_optimizer=False)
         progress_callback(f"SavedModel written to {savedmodel_path}", 80)
 
         progress_callback("Converting to ONNX...", 85)
+        #And finally converting it to ONNX and saving that
         savedmodel_to_onnx(str(savedmodel_path), str(onnx_path), opset=opset)
         progress_callback(f"ONNX written to {onnx_path}", 100)
 
@@ -144,26 +150,20 @@ def export_model(h5_path: str, output_dir: str, progress_callback, opset: int = 
         progress_callback(f"ERROR: {str(e)}", 100, done=True)
 
 def load_audio(wav_path: str):
-    """Load audio file and return as numpy array."""
+    #load audio file and return as np array
     if HAS_SOUNDFILE:
         audio, sr = sf.read(wav_path)
         return audio, sr
     elif HAS_SCIPY:
         sr, audio = wavfile.read(wav_path)
-        # Normalize if integer type
         if audio.dtype in [np.int16, np.int32]:
             audio = audio.astype(np.float32) / np.iinfo(audio.dtype).max
         return audio, sr
     else:
         raise ImportError("Neither soundfile nor scipy is available for reading audio files")
 
-def create_ort_session(
-    onnx_path: str,
-    provider_preference: str = "auto",
-    trt_fp16: bool = True,
-    trt_cache_dir: str = "",
-):
-    """Create ONNX Runtime session with TensorRT/CUDA/CPU fallback strategy."""
+def create_ort_session(onnx_path: str, provider_preference: str = "auto", trt_fp16: bool = True, trt_cache_dir: str = ""):
+    #create ONNX Runtime session with TensorRT/CUDA/CPU fallback strategy
     if not HAS_ONNX_RUNTIME:
         raise ImportError("onnxruntime is not installed")
 
@@ -188,15 +188,16 @@ def create_ort_session(
         Path(cache_path).mkdir(parents=True, exist_ok=True)
 
         trt_provider_options = {
-            "trt_engine_cache_enable": "1",
+            "trt_engine_cache_enable": True,
             "trt_engine_cache_path": cache_path,
-            "trt_timing_cache_enable": "1",
-            "trt_fp16_enable": "1" if trt_fp16 else "0",
-            "trt_builder_optimization_level": "5",
+            "trt_timing_cache_enable": True,
+            "trt_timing_cache_path": cache_path,
+            "trt_fp16_enable": bool(trt_fp16),
+            "trt_builder_optimization_level": 5,
         }
         providers.append(("TensorrtExecutionProvider", trt_provider_options))
 
-        # CUDA fallback for unsupported TensorRT ops
+        #CUDA fallback for unsupported TensorRT ops
         if "CUDAExecutionProvider" in available:
             providers.append("CUDAExecutionProvider")
         providers.append("CPUExecutionProvider")
@@ -221,7 +222,7 @@ def predict_with_onnx(
     trt_fp16: bool = True,
     trt_cache_dir: str = "",
 ):
-    """Run prediction on WAV file using ONNX model."""
+    #Run prediction on WAV file using ONNX model
     try:
         if not HAS_ONNX_RUNTIME:
             raise ImportError("onnxruntime is not installed. Install with: pip install onnxruntime-gpu")
@@ -230,7 +231,7 @@ def predict_with_onnx(
         audio, sr = load_audio(wav_path)
         progress_callback(f"Audio loaded: {len(audio)} samples @ {sr}Hz", 20)
         
-        # Initialize GPU monitoring if available
+        #Initialize GPU monitoring if available
         gpu_handle = None
         initial_vram = 0
         if HAS_GPU_MONITOR:
@@ -252,44 +253,35 @@ def predict_with_onnx(
         )
         progress_callback(f"Model loaded with: {used_providers}", 40)
         
-        # Get input shape
+        #input shape
         input_info = sess.get_inputs()[0]
         input_name = input_info.name
         input_shape = input_info.shape
         progress_callback(f"Input shape: {input_shape}", 45)
         
-        # Prepare input data (assuming mono audio needs reshaping to model input)
-        # This may need adjustment based on your model's expected input format
+        #Prepare input data (we know mono audio needs reshaping to model input)
         if len(audio.shape) == 1:
             audio = audio.reshape(-1, 1)  # (samples, 1)
         
         expected_samples = input_shape[1] if isinstance(input_shape[1], int) else 8192
         num_channels = input_shape[2] if isinstance(input_shape[2], int) else 1
         
-        # Process audio in chunks if needed
         progress_callback("Running inference...", 50)
         start_time = time.perf_counter()
         
-        # For now, process the first chunk (or pad/trim to expected size)
+        #process first chunk
         if len(audio) < expected_samples:
-            # Pad
             audio_chunk = np.pad(audio, ((0, expected_samples - len(audio)), (0, 0)), mode='constant')
         else:
-            # Take first chunk
             audio_chunk = audio[:expected_samples, :]
         
-        # Ensure correct number of channels
         if audio_chunk.shape[1] < num_channels:
             audio_chunk = np.tile(audio_chunk, (1, num_channels))[:, :num_channels]
         
-        # Reshape to (batch, samples, channels)
         input_data = audio_chunk[np.newaxis, :, :].astype(np.float32)
-        
-        # Warm-up (important for TensorRT engine build / cache)
         progress_callback("Warm-up run...", 55)
         _ = sess.run(None, {input_name: input_data})
 
-        # Timed inference
         progress_callback("Running timed inference...", 60)
         outputs = sess.run(None, {input_name: input_data})
         
@@ -297,7 +289,6 @@ def predict_with_onnx(
         inference_time = end_time - start_time
         progress_callback(f"Inference completed in {inference_time*1000:.2f}ms", 70)
         
-        # Check VRAM usage
         vram_used = None
         if gpu_handle is not None:
             try:
@@ -308,16 +299,16 @@ def predict_with_onnx(
             except:
                 pass
         
-        # Process outputs - assuming predictions are in the first output
+        #Process outputs
         predictions = outputs[0]
         progress_callback(f"Output shape: {predictions.shape}", 80)
         
-        # Export to CSV
+        #Export to CSV
         progress_callback("Exporting results to CSV...", 85)
         with open(output_csv, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
             
-            # Write metadata
+            #Write metadata
             writer.writerow(['# Metadata'])
             writer.writerow(['Audio File', wav_path])
             writer.writerow(['Sample Rate', sr])
@@ -330,22 +321,20 @@ def predict_with_onnx(
                 writer.writerow(['VRAM Used (GB)', f'{vram_used:.4f}'])
             writer.writerow([])
             
-            # Write predictions header
+            #Write predictions header
             writer.writerow(['# Predictions'])
             if len(predictions.shape) == 3:
-                # (batch, time, classes)
+                #(batch, time, classes)
                 writer.writerow(['Time Step', 'Class Probabilities...'])
                 for t in range(predictions.shape[1]):
                     row = [t] + predictions[0, t, :].tolist()
                     writer.writerow(row)
             elif len(predictions.shape) == 2:
-                # (batch, classes) or (time, classes)
                 writer.writerow(['Index', 'Values...'])
                 for i in range(predictions.shape[0]):
                     row = [i] + predictions[i, :].tolist() if len(predictions.shape) > 1 else [i, predictions[i]]
                     writer.writerow(row)
             else:
-                # Flatten and write
                 writer.writerow(['Index', 'Value'])
                 flat = predictions.flatten()
                 for i, val in enumerate(flat):
@@ -365,12 +354,12 @@ class ModelExporterApp:
         self.root.title("DAS Model Tool - Convert & Predict")
         self.root.geometry("700x550")
         
-        # Convert tab variables
+        #Convert tab variables
         self.model_file = tk.StringVar()
         self.output_dir = tk.StringVar(value=str(Path.cwd()))
         self.opset = tk.IntVar(value=13)
         
-        # Predict tab variables
+        #Predict tab variables
         self.onnx_file = tk.StringVar()
         self.wav_file = tk.StringVar()
         self.csv_output = tk.StringVar(value=str(Path.cwd() / "predictions.csv"))
@@ -402,7 +391,7 @@ class ModelExporterApp:
         elif HAS_ONNX_RUNTIME:
             ttk.Label(status_frame, text="| TensorRT EP: not available").pack(side=tk.LEFT)
 
-    # ---------------- CONVERT TAB ----------------
+    #convert tab
     def create_convert_tab(self, frame):
         ttk.Label(frame, text="Select a .h5 model file to export").pack(anchor="w", pady=5)
         
@@ -472,7 +461,7 @@ class ModelExporterApp:
         self.convert_log.delete("1.0", tk.END)
         self.convert_log.configure(state="disabled")
 
-    # ---------------- PREDICT TAB ----------------
+    #predict tab
     def create_predict_tab(self, frame):
         if not HAS_ONNX_RUNTIME:
             ttk.Label(frame, text="ONNX Runtime not installed", foreground="red").pack()
@@ -560,7 +549,7 @@ class ModelExporterApp:
             trt_cache_dir=self.trt_cache_dir.get(),
         )
 
-    # ---------------- FILE BROWSERS ----------------
+    #aux file browsers
     def browse_model(self):
         path = filedialog.askopenfilename(filetypes=[("H5 Files", "*.h5")])
         if path:
