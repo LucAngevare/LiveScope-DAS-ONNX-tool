@@ -209,6 +209,7 @@ The group-comparison view summarizes acoustic feature distributions across user-
 This tool was developed for the LiveScope analysis workflow at the intersection of rodent behaviour, ultrasonic vocalization analysis, and GPU-accelerated machine learning inference.
 
 LiveScope project page: [NWO Open Technology funding for LiveScope](https://www.ru.nl/en/donders-institute/news/nwo-open-technology-funding-for-livescope)
+Previous model, UltraEx presentation: [Holland High Tech Presentation](https://www.hollandhightech.nl/assets/Home/EVENT-2022/presentaties-na-event/N-UltraEx_MidtermHitMatStyleBE.pdf)
 
 Relevant runtime documentation:
 
